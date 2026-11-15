@@ -1,0 +1,1667 @@
+SyncPlayer: master prompt for Google AI Studio (Build)
+16 Nov 2026 · for Carter to paste into a new AI Studio Build project
+
+How to use it
+1. Open AI Studio, start a new Build project, and paste everything below the line as
+   the first message. Attach nothing else: this file is complete alone.
+2. It asks for the work in six stages. After each stage it stops and prints a results
+   table. Check the preview, then say "next stage" or say what to change.
+3. When a stage is done, download the code (or push it to GitHub) and tell me; I run
+   the same measurements on it that produced the numbers in section 2.
+Nothing in this file contains library content, titles, tags, names or keys.
+
+------------------------------------------------------------------------------------
+
+0. WHAT YOU ARE BUILDING
+
+You are the lead product designer and front-end engineer for SyncPlayer, a Windows
+desktop app (Electron) that plays a very large local video library and drives a
+motorised device, The Handy, in time with each video from a "funscript" (a timed list
+of positions). The app works and is used every day. Its engine stays. You are
+replacing its entire interface.
+
+Build a new interface as a React + TypeScript app that runs in your preview against a
+stand-in back end, and that can be dropped into the real app unchanged, because it
+talks to the real app through one fixed object, window.electronAPI (Appendix A,
+section 10).
+
+The owner's words for the current interface: "clunky", "even the minus and plus UI
+size buttons". He is right, and section 2 has the measurements. The bar for the new
+one: the best player of its kind. Calm, fast, obviously designed by someone with
+taste, for one person who sits in it for hours and steers it with the mouse and the
+keyboard (a gamepad is supported, but it is not how he usually drives it).
+The video is the point. Everything else gets out of its way and comes back the moment
+it is wanted.
+
+You have freedom over layout, navigation, component design, type scale, spacing,
+motion, and how waiting and errors are shown. If you have a better idea than
+something in this prompt, do it and say why in NOTES.md.
+You do not have freedom over: what the app can do (every existing control keeps a
+home, Appendix B), the back-end contract (Appendix A), the content rules (section 3),
+the house colours and fonts (section 7), and the acceptance tests (section 9).
+
+
+1. THE STACK AND WHAT TO DELIVER
+
+Fit into this stack exactly; the real app is built with it:
+- React 19 function components, TypeScript (strict), built by Vite. Icons from
+  lucide-react (1.5px stroke). No other runtime dependency: no state library, no
+  router, no component kit, no animation library.
+- Plain CSS files using CSS variables. NO Tailwind and no CSS-in-JS: the real app has
+  no CSS framework and one will not be added. If your environment adds Tailwind to
+  the project by default, leave it unused and say so in NOTES.md.
+- No inline style={{...}} except for values that are genuinely computed at run time
+  (a progress width, a playhead position). The current app has 411 inline styles;
+  that is one of the things being fixed.
+- No network calls of any kind from the interface (no fetch, no WebSocket, no
+  external fonts, no CDN at run time, no analytics). Everything goes through
+  window.electronAPI.
+
+Files to produce
+  src/tokens.css            every colour, size, radius, space and duration as a variable
+  src/ui/                   the shared primitives (Button, IconButton, Field, Select,
+                            Slider, RangeSlider, Switch, Tabs, Segmented, Menu,
+                            Popover, Drawer, Panel, Tooltip, Notice, ProgressRow,
+                            Kbd, EmptyState, VirtualList, VirtualGrid, ResizeHandle)
+  src/scale/                the interface-size system (section 5)
+  src/regions/              one folder per region: shell, library, player, device,
+                            manual, keys, queue, tags, info, assistants, jobs, settings
+  src/windows/              the entry for each window kind (Appendix A, section 2)
+  src/state/                small stores per region (section 8)
+  src/mock/electronAPI.ts   the stand-in back end (Appendix A, section 14, extended)
+  src/bench/                the test bench and the self-check (section 9)
+  NOTES.md                  design rationale, what you changed from this prompt and why,
+                            anything you could not satisfy
+  MAPPING.md                every key of Appendix B -> the component it now lives in
+Keep components small: no component file over 400 lines. Today's five largest are
+1,345 to 3,167 lines each and redraw far too much.
+
+
+2. WHAT IS WRONG TODAY (measured, 16 Nov 2026)
+
+The installed interface was loaded in a headless browser with stand-in data and
+measured at 13 window sizes and all ten size-button steps. These are facts, not
+opinions. The owner's three real screens, in CSS pixels, are 1920x1080 (a 4K screen
+at 200%), 1097x617 (a 1080p screen at 175%) and 1280x720. The app opens at 1200x800.
+
+The library is pushed off the screen by its own controls
+  Complete library rows visible, list view, size step 1.0 ("normal"):
+    1920x1080   3 rows      1280x720   0 rows
+    1200x800    1 row       1097x617   0 rows
+  The list starts 623px down a 1016px column: title, two rows of icon buttons, search,
+  tags, ten filter chips and five sort and filter rows sit above it. Each row is 99px
+  tall because its details wrap onto two lines.
+
+The picture is small
+  Share of the window given to the video, library open, step 1.0:
+    1920x1080   35%  (1130x635)      1280x720   10%  (415x233)
+    1200x800    18%  (557x313)       1097x617    8%  (318x178)
+  Above the video sits a banner with the title and ten buttons. It is 110px tall on
+  the big screen and wraps to 236px (five rows of buttons) at 1097 wide.
+
+The size buttons ("A-" and "A+")
+  - They sit inside the area they resize, so they move when pressed. Press A+ once
+    and, without moving the mouse, the pointer is now over A-: a second press undoes
+    the first. Press A- once and the button jumps 290px away to another row.
+  - There is no read-out of the current size and no visible reset.
+  - Ten uneven steps (0.6 0.67 0.75 0.8 0.9 1 1.1 1.25 1.4 1.6).
+  - They work by zooming three regions (library column, top bar, video banner).
+    The library column keeps its 380px width while its contents grow, so labels are
+    cut off. Everything under the video (script version buttons, heatmap, telemetry)
+    does not scale at all and stays at 9.5 to 12px. Pop-out windows zoom the whole
+    page instead, and all six then scroll sideways at step 1.6.
+  - No step works. On 1920x1080: at 1.0, 21 of 79 pieces of text are under 11px and
+    43 of 70 controls are under 32px; at 1.25 one library row is left; at 1.4 none; at
+    1.6 the banner is 239px tall and the picture is 19% of the window. Going the
+    other way, at 0.6 there are 12 rows but the text is 6px and 70 of 79 controls are
+    under 24px.
+  - One value for all screens, although the screens differ.
+
+Small windows
+  - At 1097x617 the top bar does not fit: the Connect button is cut off at the right
+    edge, and the folder name is cut to a few letters.
+  - On small windows at the larger steps, 7 to 18 controls are pushed out of the
+    window with no way to scroll to them: at 1097x617, step 1.6, the banner above the
+    video is 754px tall in a 617px window.
+
+Controls and text
+  - 11 icon-only buttons above the library and 10 buttons above the video.
+  - Depending on window size and step, 12 to 45 visible controls are icon-only with
+    no aria-label (a hover tooltip is their only name), and 11 to 42 click targets
+    are plain <div>s and <span>s that the keyboard cannot reach.
+  - 11 different text sizes on one screen; smallest 9.5px.
+  - Select boxes too narrow for their own words ("All qua", "Any sh").
+  - The video uses the browser's built-in control strip, which matches nothing else
+    and cannot be scaled or styled.
+  - Any playback failure shows the same message about a missing HEVC codec, even
+    when the file is not HEVC.
+  - Device pop-over: four tabs holding 87 controls, opening over the picture.
+
+The code behind it
+  One stylesheet of 3,881 lines with 1,322 fixed pixel values, no rem, no clamp(), no
+  container queries, 13 media queries; 79 colours in CSS plus 45 more written inline;
+  103 inline font sizes; 23 different z-index levels; 2 focus-visible rules; 15
+  aria-labels against 289 title tooltips; no reduced-motion rule; 14 blur effects.
+
+What already works and must not get worse
+  - The library list is virtualised: 21,000 items cost about 1,070 DOM nodes and 15 MB.
+  - Opening with 21,000 items: first row in under 2 seconds. Typing in search: 61 to
+    89 ms per key. Sort or filter: 18 to 40 ms. A window resize: about 50 ms.
+  - Opening and closing panels 20 times, and switching video 40 times quickly, leaks
+    nothing.
+  - One weakness: jumping to a random place in the list shows an empty list for one
+    frame (39 of 40 jumps). Fix it with overscan.
+  - During a device connection the button is disabled and reads "Connecting..."; a
+    second press does nothing. Keep that protection.
+
+
+3. HARD RULES
+
+1. Content. Neutral placeholders only: "clip_01.mp4", "Series A", "Creator 1",
+   "Playlist 1", "Tag 1", "Folder A", "Pattern set A", "Persona A", "Voice 1",
+   "Model 1", short everyday sentences. Plain grey blocks for every image, thumbnail
+   and portrait. The preview video is a generated test pattern. No real names, no
+   faces, no adult or violent content, no invented statistics.
+2. Do not add content filters, warnings, disclaimers, consent boxes or age gates.
+   Where the app shows text the owner has configured, render the text it is given,
+   unchanged; in the mock, show a grey block labelled "existing text, unchanged".
+3. Every existing control keeps a home and keeps working (Appendix B). Nothing is
+   dropped, merged away, or hidden with no way to reach it. You decide where it lives.
+4. New features: only the ones marked NEW in this prompt, plus at most five of your
+   own where they clearly earn their place, listed in MAPPING.md. Anything that would
+   need a change inside the app's engine goes in NOTES.md as an idea, not into code.
+5. The device connection (key field, Connect, Stop, Disconnect) is the most used and
+   most trusted part of the app. It stays one glance away at every window size, never
+   behind more than one click, and never cut off. The key is a secret: masked unless
+   the field has focus, never logged, never in a tooltip or title.
+6. Errors are inline, next to their cause, and say what to do next. No alert(), no
+   confirm(), no modal for an error.
+7. No emoji. No glass blur, backdrop-filter, gradient or glow anywhere.
+8. Keep every existing localStorage key and its meaning (Appendix A, section 9), so
+   nothing the owner has set is lost. New settings get new keys starting "syncplayer_".
+9. Never rename, wrap or extend window.electronAPI. Check a method exists before
+   calling it. Catch every call.
+
+
+4. THE SHAPE OF THE NEW INTERFACE
+
+These are requirements on the result, not a layout to copy. Beat the fallback below
+if you can.
+
+The picture is the hero. In the main window the video is the largest thing at every
+size. Nothing sits above it and pushes it down: the title, the script version and the
+actions live in one slim row (at most 3.5rem tall) or over the picture on hover.
+
+The library is a list first. With filters closed, the only things above the list are
+one search field and one row holding: active-filter chips, sort, view switch and the
+count. Filters open in a panel beside or over the list, never above it. Rows are one
+fixed height (about 3.5rem in list view): thumbnail, title on one line with a middle
+ellipsis, then one line of facts (length, resolution, strokes/min) that never wraps.
+
+One device panel, one way to think about it: a three-way switch, Script / Script +
+fill / Manual, with only the chosen mode's controls underneath. Whatever is set is
+summed up in one plain line ("Script + fill · hand-made patterns · pace 100%") that
+opens the detail. Expert controls are folded and show a count when something in them
+differs from the default. The panel docks beside the picture; it never opens over it
+unless the owner asks.
+
+A live bar (from the owner, 16 Nov). He changes four things constantly while a video
+plays: the stroke range, pace and speed, the script version, and fill or manual
+motion. All four are always visible in one compact bar directly under or beside the
+picture, each reachable in ONE press and each showing its key: range presets with a
+two-handle range; pace and speed; version buttons 1 to 9; the three-way Script /
+Script + fill / Manual switch. The same bar is what appears over the picture in
+fullscreen. The full device panel holds everything else.
+
+Four ways in (from the owner). He picks videos by browsing, by building a queue, by
+letting the app choose, and by searching, all regularly. None may be buried. Browse
+and search are the library itself; "Add to queue" is on every row and tile; "Pick
+for me" is one labelled control holding Shuffle, Roulette and Action Mix.
+
+Detaching must be obvious (from the owner). Asked where the app sits on his three
+screens he said: "it's on one screen because you can't detach". The pop-out windows
+exist today, but behind unlabelled buttons, and they open at awkward sizes, so he
+has never used them. Therefore:
+- every main region (picture, library, device panel) has a visible, labelled "Move
+  to another screen" control in its header, and a "Bring back" where it used to be;
+- NEW, a two-screen switch in the top bar: one press puts the picture fullscreen on
+  the screen he chooses and leaves the library and the device controls on the other;
+  one press brings everything back into one window. Build it on the existing window
+  calls (openPopout, openLibraryPopout, openDeckPopout); invent no new ones;
+- with only one screen in use, the single-window layout must still be excellent.
+
+Mouse and keyboard first. Every action used during playback has a key, shown on its
+control and in its tooltip; the mouse targets for those actions are the large ones
+(2.5rem). Gamepad support stays for every control that has it today, but do not
+design the layout around it.
+
+Labels. No row of bare icons. A primary action has an icon and a word; a secondary
+one goes in a labelled menu; an icon-only button is allowed only for the universal
+ones (play, pause, next, previous, volume, fullscreen, close) and always has an
+aria-label and a tooltip that shows its key.
+
+The player has its own control strip in the app's style (play/pause, previous, next,
+time, volume, speed, fit, script version, fullscreen), built from the primitives, in
+place of the browser's built-in controls. The scrub bar IS the script heatmap.
+
+A fallback arrangement that is known to work
+  56px app rail · library column (20 to 26rem, resizable, collapsible to nothing) ·
+  the stage (picture, then one bar that is scrub bar and heatmap, then the live
+  motion strip, collapsible) · device panel docked right (22rem, collapsible to a
+  3rem strip) · a slim jobs strip along the bottom only while a job runs.
+  The top bar holds, left to right: sources, search-everything, and on the right the
+  device connection and the interface-size control. One row, always.
+
+
+5. THE INTERFACE-SIZE SYSTEM (the owner's biggest complaint; treat as a feature)
+
+5.1 One scale
+- A single variable, --ui-scale, sizes the whole interface. Set
+    html { font-size: calc(16px * var(--ui-scale)); }
+  and write every font size, control height, icon size, gap, padding, radius and
+  panel width in rem (or in tokens defined in rem). No bare px for anything the owner
+  reads or clicks. 1px hairlines are the only exception.
+- No CSS zoom and no transform: scale() for sizing, anywhere.
+- The video picture is never scaled by it.
+- Steps: 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6. The stored value (localStorage key
+  "syncplayer_ui_scale", a number) may hold an older value such as 0.6 or 0.67; snap
+  it to the nearest step when read and keep the key.
+- Base text is 0.875rem (14px at step 1.0). Nothing the owner reads is ever under
+  12px on screen at any step: use max(12px, ...) on the smallest sizes.
+- Click targets: at least 2rem (32px at 1.0); playback and device controls at least
+  2.5rem; never under 28px on screen at any step.
+
+5.2 Bigger size must behave exactly like a smaller window
+This is the rule that makes scaling work instead of breaking the layout.
+- Lay regions out with container queries written in rem/em, not media queries in px.
+  Then a window W x H at step s arranges itself exactly as a window (W/s) x (H/s)
+  does at step 1.0. Call that the "effective size".
+- Arrangements by effective width (use these or better ones):
+    under 56rem     one region at a time: stage; library and device are drawers
+    56 to 80rem     library column + stage; device is a drawer or a slim docked strip
+    80 to 120rem    library + stage + device panel, all docked
+    over 120rem     as above, with optional "use the side space" (queue or device
+                    seated beside a 16:9 picture on an ultrawide screen)
+- By effective height: under 36rem the live motion strip folds to a thin line and
+  the library's sort row folds into its menu.
+- If the effective size falls under 50rem x 28rem the layout still works (everything
+  reachable, panels scroll inside themselves) and the size control shows one quiet
+  line: "Too large for this window".
+
+5.3 The size control (replaces the A- and A+ buttons)
+- It lives in the top bar at the far right, in a spot that does not move when the
+  size changes. Closed, it shows the current size as a number: "100%".
+- Open, it is a small popover anchored to that spot with: a minus button, a plus
+  button, a stepped slider with seven stops, the number, "Reset to 100%", and a
+  second row for the overlay size (5.5).
+- While the popover is open its own position and size are frozen in screen pixels:
+  the minus and plus buttons stay under the pointer however many times they are
+  pressed. The rest of the window resizes live behind it.
+- Dragging the slider previews live and commits on release. Esc puts back the size
+  that was set when the popover opened.
+- Ctrl + / Ctrl - / Ctrl 0 work everywhere, as today, and briefly show the number in
+  the same top-bar spot.
+- Appendix B keys lib-08 and lib-09 are the minus and plus buttons in this popover.
+
+5.4 Per screen (NEW)
+- The owner moves windows between screens with different scaling. Remember a size
+  per screen: new key "syncplayer_ui_scale_by_screen", an object keyed by
+  "<width>x<height>@<devicePixelRatio>" of the screen the window is on. When the
+  window lands on another screen (listen for a devicePixelRatio or screen size
+  change), apply that screen's value, or the global value if it has none.
+- Every window kind (main, library, device, keys, chat, assistant controls, pop-out
+  player) keeps its own value the same way, under its own key.
+
+5.5 Overlay size (NEW)
+- A second variable, --overlay-scale (steps 1, 1.25, 1.5, 2), sizes everything drawn
+  over the picture in fullscreen and in the pop-out player, because that is read
+  from further away. New key "syncplayer_overlay_scale".
+
+5.6 Fullscreen and windows
+- Fullscreen is its own layout: picture edge to edge on true black; inside a 4% safe
+  margin the scrub heatmap, the live motion strip, the quick device deck (movable,
+  remembers its place), title, clock and "up next". All of it appears on pointer
+  move, key or pad press and fades after a few seconds. Nothing in it needs a small
+  mouse target.
+- Each window kind is complete alone, never scrolls sideways at any step, shows
+  "waiting for the main window" until its first state message arrives, and has a
+  clear "bring back" control. Where a panel has been popped out, its docked place
+  shows one quiet line ("Device panel is in its own window · Bring back").
+- The pop-out player is a bare picture: no frame, drag anywhere to move, controls
+  only on hover, double-click for fullscreen, its own fit choice.
+- OLED mode (NEW, in Display settings): surfaces around the video go to true black,
+  nothing bright stays still during playback, the scrub bar dims and then hides.
+
+
+6. WHAT IT MUST HOLD
+
+Every group below needs a home. Where each lives, and whether it is a drawer, a panel,
+a tab or something better, is yours. The keys in brackets point at the groups in
+Appendix B.
+1. Top [top]: brightness of the theme (two levels today), choose a folder, refresh the
+   folders, search a whole drive for scripted videos, and the device connection: key
+   field, Connect, Stop movement, Disconnect. Show the connection as a state with a
+   word: not connected, connecting, connected, lost.
+2. Sources and library [lib, libwin]: saved folders with a tick each, include
+   sub-folders, add, forget, open in Explorer, select all, just one; one search field
+   (it understands "ep 3", "ep 3+", "ep 2-5"); filter chips; grid or list; sort and
+   direction; the "shows together, episodes in order" switch; quality, orientation,
+   rating and length filters; hide empty scripts; clear filters; hide the filter rows;
+   UI smaller and bigger. The library can also live in its own window.
+   NEW: fixed categories as first-class filters, ahead of free tags: Type (2-D / 3-D /
+   Real), Format (music compilation / animated music compilation / first-person /
+   normal), Censored (yes / no), Series, Creator. A missing-drive state: videos on an
+   unplugged drive stay listed, greyed, with "drive not connected", and are never
+   removed by themselves. A slow-drive state: "this drive is answering slowly".
+   NEW: multi-select with a bulk bar: categorise, tag, add to playlist, queue,
+   generate script.
+3. Tiles and rows [card, row]: thumbnail (fixed 16:9 box), title, duration, resolution,
+   a script mark with strokes per minute, a 4px speed strip, favourite, queue,
+   playlist, resume progress, an HDR mark. States: default, hover (a still preview
+   strip that follows the pointer; no second video plays), selected, playing, missing
+   drive, no script, getting ready.
+4. Tags [tag]: filter by tag, match all or any, find a tag, order the list, combine
+   ticked tags into one of mine, delete one of mine.
+   NEW: a review queue where suggested categories and tags wait for accept / change /
+   reject, one at a time or in bulk; suggested values look different from the owner's
+   own (dashed outline). Tag tidy: fragments and duplicates flagged; merge, rename,
+   and Undo for the last change.
+5. History [hist]: what was played, newest first, find, play again.
+6. Queue and playlists [queue, pl, pick]: the queue with move up, move down, play now,
+   remove, clear; save the queue as a playlist; replace the queue with a playlist;
+   delete a playlist; show one playlist or several combined; edit a playlist in
+   place; the playlists helper (ask for picks, tags to include, how many, save as
+   playlist, fix existing playlists, bulk delete); the pick helper (what do you feel
+   like, queue all, research online). A playlist can hold videos from any drive.
+7. Now Playing [play]: picture fit; pop the player out or bring it back; fullscreen;
+   pop the library out; previous, play or pause, next; skip a gap; start over; script
+   version buttons (keys 1 to 9) and a version pick-list; link a script file; send the
+   script to the device; the depth and speed dial; Roulette (on or off, pace, time per
+   video, min and max seconds, plan a session, pre-pick); make a voice track;
+   commentary volume; the mirror controls used when this window is steering another
+   PC's player; compact or expanded read-out.
+   The scrub bar is the heatmap: colour = speed, height = stroke range, playhead in
+   the accent. NEW on it: scene-cut ticks and a hatched mark where the script's
+   tracking confidence was low (tooltip "tracking uncertain here"). Hover shows a
+   still preview and the time.
+   NEW, "Mark this part" (a key and a pad button): marks a time span as wrong or weak
+   while watching. Marked spans show on the scrub bar and can be sent to
+   Funscripterino to redo just that span. States: nothing marked, 3 spans marked,
+   sent, redone.
+8. Device panel [dev, deckwin]: today this is a tall four-tab pop-over (Live, Source,
+   Motion, More) holding 87 controls. Re-home all of them under the three-way switch:
+   - Always visible at the top: connection state, timing offset, the mode switch,
+     the live sliders (pace, speed, stroke length, vibration), "back to the script as
+     written", Reset.
+   - Stroke window ("where it works"): a range slider with lowest and highest point,
+     presets (Full, Tip, Mid, Base and the rest), and how the script is fitted into
+     the window: "squash" (the device's own slider) or "keep the speed and tempo",
+     with its spare-time style.
+   - Script: version, how often the script may stroke.
+   - Script + fill: what fills (hand-made patterns / one built-in motion / anything),
+     position chips and intensity chips with their keys, mood buttons, mode buttons,
+     the pattern pick-list, shuffle focus, order, time per pattern; what counts as a
+     gap (shortest gap, how still, fill slower-than-usual parts), jump to the next
+     gap; fill speed and shake; the quick deck that shows over the video during gaps,
+     with pin, and its own window.
+   - Saved things: pattern playlists (steps with seconds; load, save, delete) and
+     experiences (stages with focus, intensity and minutes; orders; load, save,
+     delete), "fit to this video's length", "everything, tease to finish".
+   - A motion preview: the next 30 seconds as a line with the playhead and a bar
+     showing where the device is now.
+   - The "tell the model where you are" box with its reply.
+   - NEW, "Save as a new version": writes what the device is doing now (the script
+     plus the live sliders, the stroke window and the fill) as a new script version
+     for this video, named by the owner and listed with the other versions. The
+     original is never overwritten.
+9. Manual, the third mode [dev, rem]: for a video with no script, or no video at all.
+   Make this a pleasure to use. Three tabs:
+   a) Gamepad: eight preset tiles (a speed and a stroke each), a live speed meter, the
+      button map, and when a script is playing a banner "Overriding the script" with
+      "release to return". (NEW presentation of controls that exist.)
+   b) Journey: a session timeline (slow start, gradual build, fast finish, cool down),
+      current pattern and next pattern named by type only, a session length choice,
+      "Skip to finish". This is where experiences and pattern chains live: the chain
+      editor (pick a folder, add patterns, speed and length per step, move, duplicate,
+      remove, loop, load, play, stop), three named speed modes with their factors, a
+      speed slider, the stroke window with presets.
+   c) Knob (NEW): one large 0-100 dial labelled "How close?", and a small read-out of
+      the five things it drives (speed, stroke minimum, stroke maximum, amplitude,
+      hold). Keyboard and gamepad adjustable.
+10. Keys and controller [keys]: one table of actions with a keyboard column and a
+    gamepad column; capture and clear for each; what each stick and trigger controls;
+    what "previous" means; reset to defaults; its own window. Show a compact drawing
+    of a gamepad with the current layout on it.
+11. Action Mix [mix]: folders to draw from with a tick each, action type toggles, block
+    length, launch, append to queue.
+12. Info and the tagging toolbox [info]: for the selected video's show: title, a text
+    block, rating, genre and theme chips that filter the library, "wrong or unknown
+    show" with a name field and Fix, look-ups. The toolbox ("AI tools"): server
+    address, one or two models, test, how many at once, look-up buttons (this video,
+    its folder, the ticked folders), retag buttons (same three scopes), redo options,
+    put the previous tags back, clean up tags, fill missing ratings, organise series,
+    make a playlist tag, my tags, a chat with standing instructions (two "existing
+    text, unchanged" blocks), Stop. Running work shows as a job (see 15).
+13. Assistants [ai, aiwin, chat, con, edge]: four optional panels and their pop-out
+    window. Design one area with tabs: Watch-along, Chat, Concierge, Paced commentary.
+    They hold pick-lists (model, voice, persona, speech engine, interval, style and
+    others), start and stop buttons, a typed message field with Send, analysis
+    buttons (this video, this video and the queue, the folder), "make a voice track",
+    volume ducking, and several free-text fields. Every free-text field and every
+    block of configured text is drawn as a grey "existing text, unchanged" block:
+    design the frame, never the words. The collapsed form is a small quiet mark, not
+    a glowing orb.
+14. Other PCs and the phone [link, ds]: second-PC link (address, PIN, test and save,
+    switch over); the phone remote (shows the address and PIN to open on a phone, and
+    its keys sheet); the local speech server tab (start, stop, reload, dismiss).
+    Deliver the phone remote as its own narrow page: library, play controls, the
+    stroke window, the keys sheet.
+15. NEW, Jobs: one row per background job (drive scan, look-up, retag, getting a file
+    ready, generating a script): stage, real percentage, time left, Cancel, open
+    result. States: queued, running, failed (reason in one line + Retry), finished.
+16. NEW, the no-script flow: an unscripted video offers "Generate script"; the job
+    appears in Jobs with its stage; when done the video offers the new script and
+    keeps the old ones.
+17. NEW, Settings as one place: Sources · Device (profile: Handy gen 1 / Handy 2 Pro,
+    limits as sliders with units) · Keys and controller · Display (UI size, overlay
+    size, OLED mode, the per-screen read-out, "use the side space") · Playback (how
+    files are played, converted copies) · Local model addresses · Data and backups.
+18. Speed is shown in "units/s" and stroke rate in "strokes/min". They are different
+    things; label each wherever it appears.
+
+STATES TO SHOW
+No sources yet · empty library · a filter with no results · a whole-drive scan running
+· a drive unplugged · a drive answering slowly · device not connected · connecting ·
+connected · device lost mid-play (the video keeps playing; the panel offers Reconnect)
+· a video with no script · a video with three scripts · a script that failed to load ·
+a file getting ready to play · a file that cannot be played · HDR on an HDR screen ·
+HDR shown as SDR · a panel that has been popped out · a job failed · the local model
+server unreachable · the speech server not running · a persona that "no longer
+exists" · gamepad overriding the script · the journey in its finish phase · three
+spans marked for redoing · a new script version just saved · error fallback
+("Something went wrong here · Try again").
+
+
+7. HOUSE STYLE
+
+SyncPlayer is one of six sibling apps. These values are fixed so the family matches.
+- Dark, matte, carbon. Surfaces: --bg-void #0B0B0D, --bg-stage #111114,
+  --bg-surface #17171B, --bg-elevated #1E1E24, --bg-hover #25252D,
+  --border-hairline #27272F. Text: --text-primary #F2F0EC, --text-secondary #ABA8A1,
+  --text-muted #85827C. Status: --danger #D9645F, --ok #5FAE84, --warn #D6A24E.
+- One accent, #6A8EC2 (a muted blue), used sparingly: the primary action, the active
+  state, the focus ring, the playhead.
+- One data colour scale, used ONLY for script speed in heatmaps, slow to fast:
+  --heat-1 #3E6B8C, --heat-2 #4E9A8A, --heat-3 #C9B458, --heat-4 #D08A4A,
+  --heat-5 #C8554F. Never reuse those for status.
+- The picture's surround is true black (#000) in the player, the pop-out and
+  fullscreen.
+- Fonts: Outfit for headings, Plus Jakarta Sans for text, JetBrains Mono for numbers
+  and shortcuts. The real app ships them as local files; in the preview declare them
+  with system fallbacks and load nothing from the network.
+- A 56px launcher rail on the far left with six app icons (tooltips, the active app
+  in its accent). It hides in fullscreen and is absent from pop-out windows.
+- At most six text sizes and at most six z-index layers, all named tokens.
+- Motion only where it explains a change of state, 120 to 200 ms, and never while a
+  video is playing except the playhead, the motion dot and progress.
+  prefers-reduced-motion removes the rest.
+
+Not generated-looking. A reviewer will reject work that shows: a grid of equal cards
+and stat tiles; rounded box inside rounded box; pills everywhere; purple or blue
+gradients; huge padding around tiny content; a narrow centred column on a wide
+screen; sparkles, wands, robots or any other "AI" motif; rows of unlabelled icons;
+things that bounce, pulse or slide in on load; the untouched look of a component kit.
+What good looks like: hierarchy made with type, spacing and alignment, not boxes;
+hairlines over cards; dense but quiet; short, plain, specific labels; verbs on
+buttons; numbers with units; waiting that shows real stages and real counts; focus
+states that look designed; empty states that say what to do next.
+Put a ten-line design rationale at the top of NOTES.md before you write code: the
+idea, the grid, the type system, and what makes this not look generated.
+
+
+8. HOW IT MUST BEHAVE AND PERFORM
+
+- Split state by region, so a change in the device panel never redraws the library
+  and the reverse. Keep fast-changing values (current time, device position, the
+  playhead) out of React state: write them to the DOM directly from one
+  requestAnimationFrame loop.
+- Virtualise every list and grid with fixed row height and fixed tile aspect, with
+  enough overscan that a jump never shows an empty list. Apply background results in
+  batches without re-sorting the whole list. Search, sort and filter in memory.
+- Keep the library's scroll position when a video, a panel or a filter is opened and
+  closed.
+- One visible <video> at a time, plus at most one hidden one preloading the next.
+  Never a <video> per list item. Hover previews show a still for 4K-class sources.
+- While a video plays: no layout work and no repaint outside the playhead, the
+  motion dot and progress.
+- Budgets (must hold with 21,000 items): usable library under 2 seconds; search
+  results within 100 ms of a key; 60 frames a second while scrolling; a panel opens
+  within 100 ms.
+- Long calls (connecting takes 10 to 20 seconds, loading a script 1 to 5, scans much
+  longer) show a running state with elapsed time and, where the app offers one, a
+  cancel. Never invent a percentage the app does not report.
+- Device commands are limited to about 240 a minute and take 1 to 2 seconds to take
+  effect: send on release or at most every 400 to 500 ms while a control moves, show
+  the chosen value at once and mark it "sending" until confirmed.
+
+QUALITY BARS (outcomes; how you meet them is yours)
+- Keyboard: everything is reachable without a mouse; focus order follows reading
+  order; overlays trap focus and return it; Esc closes the top overlay; arrows move
+  through the grid; Enter plays; Space toggles play; every device action shows its
+  binding on its control.
+- Gamepad: every action in the bindings table can be reached without the mouse; the
+  focused control is always visible; focus states are large enough to see from a
+  distance.
+- Screen readers: every icon-only button has an aria-label; connection state and job
+  updates are polite live regions; errors are assertive.
+- Contrast at least 4.5:1 for all text, including the quietest. State is never shown
+  by colour alone: confidence carries a word, device state an icon and a word, and the
+  heatmap also encodes range by height.
+- prefers-reduced-motion removes all motion except the playhead, the motion dot and
+  progress.
+- Built to stay fast with real data: 21,000 videos, 200+ tags, 100+ playlists.
+  Fixed-height rows and fixed-aspect tiles so a virtualised list never jumps; no
+  effect that forces the whole window to repaint while a video plays.
+- Long titles truncate (two lines in tiles, middle ellipsis in rows), with the full
+  text on hover or focus and in the detail panel.
+
+
+9. ACCEPTANCE TESTS (build the checker, then pass it)
+
+Build two things into the project, visible only in the preview, never in production:
+
+The test bench (src/bench): a thin bar toggled with F9 that lets the reviewer pick a
+window size (640x480, 1000x560, 1097x617, 1200x800, 1280x720, 1366x768, 1920x1080,
+2560x1440, 3440x1440, 3840x2160, 1080x1920; drawn in a sized frame), a size step, a
+window kind, the library size (0 / 2,000 / 21,000), names (normal / very long), and
+the device state (not connected, connecting, connected, playing, paused, lost,
+error, no script).
+
+The self-check (window.__selfCheck()): measures the live DOM and returns a table.
+For each visible control and piece of text it uses getBoundingClientRect, so the
+numbers are what is actually on screen. It reports: complete library rows visible;
+the picture's share of the window; the smallest text in px; text under 12px; the
+smallest click target; targets under 32px; controls cut off by a container that
+cannot scroll; controls cut by the window edge; controls whose centre is covered by
+another element (document.elementFromPoint); controls with no accessible name;
+click handlers on non-focusable elements; whether the page scrolls sideways; the
+number of distinct text sizes; and the DOM node count.
+
+Pass marks. "Today" is what the current interface scored.
+                                                    today     must be
+  Library rows visible, filters closed, step 1.0
+    1920x1080                                         3       at least 12
+    1280x720                                          0       at least 7
+    1200x800                                          1       at least 8
+    1097x617                                          0       at least 6
+    2560x1440                                         7       at least 16 rows or 24 tiles
+  Picture share, library open, device panel closed, step 1.0
+    1920x1080                                        35%      at least 50%
+    1280x720                                         10%      at least 42%
+    1200x800                                         18%      at least 36%
+    1097x617                                          8%      at least 38%
+  Picture share with library and device both closed
+    1920x1080 and larger                              -       at least 65%
+    1280x720 and 1097x617                             -       at least 50%
+  Height of everything above the first library row   623px    at most 6rem
+  Height of the row that holds the title and actions 83-482px at most 3.5rem
+  Top bar                                  wraps, cut at 1097   one row, nothing cut
+  Text under 12px on screen, any size, any step      up to 211    0
+  Click targets under 32px at step 1.0               28 to 53     0 (dense table cells may be 28px)
+  Click targets under 28px at any step               up to 89 under 24px    0
+  Controls cut off, covered or pushed out of reach   up to 18     0 at every size x step
+  Icon-only controls with no aria-label              up to 45     0
+  Click targets the keyboard cannot reach            up to 42     0
+  Page scrolls sideways (any window kind, any step)  6 of 6 pop-outs at 1.6    never
+  Distinct text sizes on one screen                  11          at most 6
+  Size buttons stay under the pointer for 5 presses  no          yes, both directions
+  Range, pace/speed, version and mode: presses to reach, at every size   1 to 3   1 each
+  A labelled "Move to another screen" on picture, library, device   no   yes
+  Scale rule: layout at W x H, step s equals layout at (W/s) x (H/s), step 1.0   -   yes
+  DOM nodes with 21,000 items                        about 1,070  at most 2,500
+  Blank list after a scroll jump                     39 of 40     0
+Run the self-check at every size in the bench at steps 0.8, 1, 1.25 and 1.6 and print
+the table at the end of each stage. If a mark cannot be met, say which and why;
+do not quietly change the test.
+
+
+10. HOW TO WORK: SIX STAGES, STOP AFTER EACH
+
+Stage 1  Foundations. NOTES.md rationale; tokens.css; the ui/ primitives with every
+         state (rest, hover, focus, pressed, disabled, busy, error); the scale system
+         and the size control; the mock back end; the test bench and the self-check;
+         the shell (rail, top bar with the device connection, empty regions) at all
+         sizes. A page that shows every primitive.
+Stage 2  Library. Sources, search, filters panel, sort, list and grid, tiles and rows
+         with all their states, tags, favourites, history, multi-select and the bulk
+         bar, the empty, scanning, missing-drive and slow-drive states.
+Stage 3  The stage. The player and its control strip, the heatmap scrub bar, the live
+         motion strip, script versions, getting-ready and cannot-play states, queue
+         and playlists, Roulette, Action Mix, the info panel.
+Stage 4  Device. Connection states including the 12-second connect, the three-way
+         switch, live sliders, the stroke window, fill settings, saved patterns and
+         journeys, the motion preview, the timing offset (NEW), "Save as a new
+         version" (NEW).
+Stage 5  Manual mode and keys. Gamepad presets, Journey, the "How close?" knob (NEW),
+         the keys and controller table with capture, the gamepad drawing.
+Stage 6  Everything else. Fullscreen as its own layout; each pop-out window; the
+         assistants area; other PCs and the phone page; Jobs (NEW); Settings as one
+         place (NEW); OLED mode (NEW).
+At the end of every stage: the self-check table, MAPPING.md updated with the keys
+placed so far, and a short list of what you were unsure about. Then stop and wait.
+Ask before you assume anything this prompt does not state. Do not invent methods on
+window.electronAPI, new files on disk, or new network calls.
+
+
+APPENDIX A. HOW THE APP WORKS UNDERNEATH (read from its source code)
+Section numbers are those of the original engineering brief; 1, 12, 13 and 15 are
+replaced by the sections above.
+
+2. WINDOWS
+
+Every window loads the same page; a query string picks what it shows.
+  (none)          the main window: library, player, device panel
+  ?popout=1       pop-out player: a bare video surface, no window frame
+  ?library=1      the library alone
+  ?deck=1         the device panel alone (kept above other windows)
+  ?keys=1         keys and controller alone
+  ?chat=1         assistant chat alone
+  ?ai-popout=1    assistant controls alone
+Windows do not share memory. They pass small messages through the main process:
+  popout-command / popout-ready / popout-closed    main window <-> pop-out player
+  library-bridge                                   main window <-> library, deck, keys, chat
+  ai-control-bridge                                main window <-> assistant controls
+Rule: the main window owns the truth (what is playing, the device connection). A
+pop-out shows a copy of that state and sends commands back; it never talks to the
+device itself. Design every pop-out so it is complete alone and shows "waiting for the
+main window" until its first state message arrives.
+
+There is also a phone/second-PC page served by the app on the local network (port
+8787, protected by a PIN). It is the same interface running without Electron; device
+panels are hidden there.
+
+
+3. VIDEO: WHAT THE FILES ARE AND WHAT THE APP DOES WITH THEM
+
+SyncPlayer does not compress, convert or re-encode video. It plays each file exactly
+as it is on disk, in a standard HTML <video> element. What plays is whatever Chromium
+128 can decode:
+- Containers: MP4 / M4V / MOV, WebM, and MKV when the codecs inside are supported.
+- Picture: H.264, HEVC (H.265, decoded on the graphics card), AV1, VP8, VP9.
+- Sound: AAC, MP3, Opus, Vorbis, FLAC.
+It cannot decode MPEG-2, Xvid/DivX, WMV/VC-1, ProRes, or AC-3 / E-AC-3 / DTS sound.
+
+What happens when a file will not play
+1. The <video> element raises an error (code 3 or 4).
+2. The interface calls remuxVideo(path). The app repackages the file into MP4 without
+   re-encoding (a container change only, no quality loss) and stores the copy in a
+   cache folder. This takes seconds to a few minutes for a large file.
+3. The interface plays the returned copy. If that fails too, it shows an error.
+The interface must show these as real states: playing direct, getting ready (with a
+progress message), playing the repackaged copy, cannot play (with the reason).
+Planned, not built: converting sound only, and converting old codecs once on the
+graphics card. Leave room for a "converting, 34%" state.
+
+The library scanner lists these extensions only: mp4, mkv, avi, m4v, webm, mov, wmv.
+
+Sizes and cost. Sources range from 480p to 4K and from a few megabytes to several
+gigabytes. Decoding a 4K file is expensive, so the interface follows these rules, and
+yours must too:
+- One visible <video> at a time, plus at most one hidden one that preloads the next
+  item so switching is instant (the current code calls this BufferedVideo: two decoder
+  slots, the idle one muted and 1 pixel in size).
+- Hover previews in the library play a second copy of the video ONLY for sources
+  under 2560 wide and under 1440 high. For anything larger, show the cached still.
+- Never create a <video> per list item. Never autoplay several previews at once.
+- The scrub-bar hover preview seeks a hidden copy; it is switched off for 4K-class
+  sources.
+
+Stills. getThumbnail(path, second) returns one JPEG frame, 320 pixels wide, as a
+data: URL. The app makes it with ffmpeg and caches it on disk. getThumbnailCached
+returns the cached one or nothing, without doing any work. Load stills lazily, only
+for items on screen.
+
+Probing. Resolution and duration are read in the background (probeMediaBatch) and
+cached. Until that finishes an item has width and height of 0 and a "pending" flag.
+Tiles must not jump when the numbers arrive: fixed 16:9 boxes, fixed row heights.
+
+File addresses. Local files are played through file:// addresses. Paths can contain
+"#" and "?", which must be percent-encoded or the file will not load. Use the app's
+existing helper for this; do not build addresses by hand.
+
+Fit and fullscreen. The picture can be shown as fit, fill or stretched (one control
+cycles them). Fullscreen uses the browser's fullscreen on the element that wraps the
+video and its overlays, never on the <video> itself, so overlays stay visible.
+Playback speed can change, but the device cannot follow any speed other than 1x: at
+any other speed the device is paused and the interface must say so.
+
+HDR. When Windows has HDR switched on for the monitor, Chromium shows HDR video in
+HDR by itself and keeps the interface at normal brightness. The page can ask whether
+the current screen is HDR with matchMedia('(dynamic-range: high)') and listen for
+changes (the answer changes when the window moves to another monitor). Nothing in the
+app can switch HDR on. Use the answer only to show a small "HDR" mark.
+
+Screens. The owner uses three monitors at three scalings: 3840x2160 at 200%,
+1920x1080 at 175%, 1280x720 at 100%. A window can be moved between them at any time.
+In CSS pixels those screens are 1920x1080, 1097x617 and 1280x720, so a maximised
+window on the second one is only about 1097x577. Design for a window from 1000x560 up
+to 3840x2160, and never assume the scaling.
+
+
+4. THE LIBRARY
+
+Sources. The owner links folders (with or without sub-folders) and can also search a
+whole drive for videos that already have a script. Several folders can be active at
+once and are merged into one list.
+  selectDirectory()                      -> a folder path, or nothing
+  scanDirectories(dirs, recursive)       -> VideoStats[] for all of them
+  scanDrive(root) + onScanDriveProgress  -> a long scan with progress messages
+  watchDirectory(dirs, recursive) + onDirectoryChanged(dir)   the app tells the
+                                            interface when files appear or disappear
+  playbackFileExists(path)               -> true or false (a drive can be unplugged)
+
+One item (VideoStats):
+  videoPath      string   the file's full path. THIS IS THE ITEM'S IDENTITY. There is no
+                          other id. Never show the raw path as a title.
+  name           string   file name, shown as the title
+  scriptPath     string?  the script file, if one exists
+  hasFunscript   boolean
+  hasNew         boolean? a second, newer script exists beside it
+  durationMs     number
+  strokes        number   how many strokes the script has
+  spm            number   strokes per minute
+  avgSpeed       number   average speed in units per second
+  scriptedAt     number?  when the script was last written (for sorting)
+  sizeBytes      number
+  createdAt      number   file date
+  addedAt        number?  when the app first saw the file
+  folder         string?  which linked folder it came from
+  width, height  number?  0 until the background probe fills them in
+  contentKind    'pmv' | 'pov' | 'unknown'    read from the script's own metadata
+  statsPending, probePending   boolean?       numbers still being worked out
+
+How scripts are found. For clip.mp4 the default script is clip.funscript beside it.
+Any file named clip.<label>.funscript beside it is another version of the script,
+shown in a version switcher under the name <label>. listScriptVersions(videoPath)
+returns [{ label, path }]. Switching version must not stop the video.
+
+Size and speed. About 21,000 items. Sorting and grouping that list takes about 100 ms,
+and background results arrive in batches of 50 to 100 items, each of which today
+causes a full list pass. Requirements for the new interface:
+- Virtualise every list and grid. Fixed row height and fixed tile aspect.
+- Apply batch results without re-sorting the whole list on every batch.
+- Keep scroll position when a panel, a filter or a video is opened and closed.
+- Search, sort and filter in memory; never call the app per keystroke.
+
+Sorting and filtering that exist today: by name, stroke speed, length, size, date
+added, date scripted, rating; ascending or descending; "shows together, episodes in
+order" grouping; filters for scripted or not, favourites, new, quality (resolution),
+orientation, minimum rating, minimum and maximum length, tags (match all or any),
+playlists. The search box also understands "ep 3", "ep 3+" and "ep 2-5".
+
+Resume. getResumeAll() -> { [videoPath]: { t, dur, at } }; setResume(path, t, dur)
+saves a position; a t under 5 seconds deletes the entry.
+
+Show information. For videos that belong to a series the app can hold a title, a
+description, a rating out of 10, genres and themes (getSeriesInfo, getSeriesIndex,
+getSeriesCatalog). Treat every one of these texts as content: show it, never write
+it yourself, and use placeholder text in mock-ups.
+
+
+5. FUNSCRIPTS AND WHAT IS DRAWN FROM THEM
+
+A funscript is JSON:
+  { "version": "1.0", "inverted": false, "range": 100,
+    "actions": [ { "at": 0, "pos": 10 }, { "at": 400, "pos": 90 }, ... ],
+    "metadata": { ... } }
+"at" is milliseconds from the start of the video. "pos" is 0 to 100: 0 is the base,
+100 is the tip. The device moves in a straight line between consecutive points.
+getFunscript(path) returns the parsed file.
+
+Two numbers that are often confused. Speed is in units per second (how fast the
+position changes). Stroke rate is in strokes per minute. Label each wherever shown.
+The first-generation Handy starts shortening strokes somewhere between about 400 and
+500 units per second and cannot move smoothly below about 30.
+
+What the interface draws
+- Heatmap: the whole script as a strip along the timeline, colour = speed, height =
+  stroke range. It is drawn on a canvas, once per script, then only the playhead
+  moves. It doubles as the scrub bar: click to seek, hover for the time.
+- Live motion strip: the last few seconds of position as a line, with a dot for
+  "now". It runs at 60 frames a second by interpolating between script points from
+  the video's clock; it must not cause the rest of the window to redraw.
+- Device bar: where the device should be right now (0 to 100).
+Performance rule: while a video plays, only the playhead, the motion dot and progress
+may animate. No effect may force the whole window to repaint (the current app's blur
+and shadow effects are a suspected cause of stutter).
+
+
+6. THE HANDY: HOW THE CONNECTION WORKS
+
+The device is controlled through its maker's internet service. The app's main process
+makes every call. The interface never contacts the service; it calls the methods
+below and shows the state.
+
+Connecting: connectHandy(key)
+  The owner types a short connection key. The app then:
+  1. asks the service whether a device with that key is online;
+  2. checks which generation of the service the device speaks (newer firmware gets
+     real pause and resume and a streaming mode; older gets the legacy calls);
+  3. measures the clock difference between this PC and the service: 30 round trips,
+     drops the 10 slowest, averages the rest.
+  Step 3 alone takes about 12 seconds from Australia (each round trip is about 0.4 s).
+  Returns { connected: true, api: 'v2' | 'v3', fw: string }
+       or { connected: false, error: string }, for example "Handy device is not
+       online" or "Handy API HTTP 500".
+  The interface MUST show connecting as a state that lasts 10 to 20 seconds, with a
+  moving indication, and must not let the owner press Connect twice. Today the button
+  is disabled and reads "Connecting..." for the whole wait (measured 16 Nov: a second
+  press does nothing), but nothing says how long it has been or how long it usually
+  takes. Show the seconds elapsed and "usually 10 to 20 seconds". The app does not
+  report stages, so do not invent a percentage.
+  The key is a secret: show it masked unless the field has focus, never log it, never
+  put it in a title or a tooltip.
+
+Loading a script: uploadHandyScript(scriptPath, depth?, gap?)
+  The app reads the script, applies whatever is switched on (depth scaling, gap fill,
+  the stroke window), sends it to the service, and tells the device to load it.
+  Returns { success: boolean, error?: string }. It takes 1 to 5 seconds. Every change
+  that alters the script itself (a different version, a different fill pattern) means
+  loading again, and the device pauses while that happens. Show "loading script"
+  and debounce: wait about 700 ms after the last change before calling.
+
+Playing in time
+  playHandy(timeMs)      start the device at this position in the video
+  pauseHandy()           stop the device (a true pause on newer firmware)
+  syncHandyTime(timeMs)  the video jumped (a seek): move the device to match
+  stopHandy()            stop movement but stay connected
+  disconnectHandy()      stop and forget the connection
+  The video element is the clock. The interface calls playHandy when the video starts
+  playing, pauseHandy when it pauses or ends, syncHandyTime after every seek, and
+  pauses the device whenever playback speed is not 1x. After a seek on a slow
+  connection the device can be left in the wrong place, so always send the exact
+  position again once the video is actually playing.
+  setHandyOffset(ms) shifts the device earlier or later relative to the video
+  (negative = earlier). The app supports it but TODAY'S INTERFACE HAS NO CONTROL FOR
+  IT. Add one: a small stepper in milliseconds beside the connection state.
+
+Limits that shape the controls
+- The service accepts roughly 240 commands a minute per connection, shared by
+  everything. Never send a command per pixel of a drag. Send when the control is
+  released, or at most every 400 to 500 ms while it moves.
+- A command takes 1 to 2 seconds to take effect. Controls must show the value the
+  owner chose immediately and mark it "sending" until the app confirms.
+- If the device drops off the network mid-play, the video keeps playing. Show the
+  lost state and a Reconnect button; do not stop the video.
+
+Live controls (no reload needed)
+  liveTameSet({ pace, speed, length, vibe }, state)   four live sliders, 100 = as
+      written. pace = how often it strokes, speed = how fast it travels, length =
+      stroke length, vibe = an added shake (-1 = automatic, 0 = off, 1 to 3).
+      When any slider leaves 100 the app switches to streaming points to the device
+      ahead of time. A harder change lands within about 5 seconds; a gentler one
+      restarts the stream with a hitch of about a second. Say so near the sliders.
+  liveTameGet()                                       current values
+  remoteSlide(min, max, mode, style)                  the stroke window: lowest and
+      highest point (0 to 100). mode 'squash' uses the device's own range limit:
+      instant, the shape is kept, everything gets slower. mode 'cap' means "keep the
+      speed and tempo": the app rewrites the timing so strokes inside the window run
+      at the script's own speed, and spare time is spent according to `style`
+      (pause at the turn, soft landing, or a mix).
+  setDeviceMotion({ rev, actions }) and setDevicePlayerState(state)   the interface
+      tells the app what motion it is previewing, so the device and the on-screen
+      preview show the same thing.
+
+States the device area must be able to show
+  not connected · connecting (10-20 s) · connected (with generation and firmware) ·
+  loading script · playing · paused · paused because speed is not 1x · no script for
+  this video · lost · error (with the message the app returned)
+
+
+7. MOTION WITHOUT A SCRIPT, AND FILLING GAPS
+
+Many videos have no script, and many scripts have long still sections. The app can
+fill those with motion, and the owner steers it live. This is the densest part of the
+current interface (87 controls in one pop-over) and the part most in need of order.
+
+Pattern library. listPatterns() returns the hand-made pattern files, grouped by
+folder (six folders, about 160 files). Each pattern is itself a short funscript.
+readPattern(path), readAllPatterns() and readPatternsByPath() return their points.
+patternsBrief() returns a compact list for the assistant. The pattern names describe
+tempo and character; the app sorts them into tease, slow, mid, fast and finish from
+those names. In mock-ups call them "Pattern set A", "Pattern 1".
+
+The fill configuration is one object (GapCfg) that the interface edits and passes to
+uploadHandyScript. Its main parts:
+  on               fill is on or off
+  ignoreScript     treat the whole video as one gap ("my motion instead")
+  mode             how patterns are chosen: one fixed motion, shuffle, a saved
+                   playlist of steps, or a "journey"
+  pattern          a built-in motion or 'file:<path>' for a hand-made one
+  mood             one of eight built-in moods
+  shuffleFocus     words that narrow the shuffle to matching pattern names
+  journey stages   each { focus, level, minutes }: for example slow start, build, finish
+  journeyOrder     how stages are ordered; "fit to this video's length" scales the
+                   build so the finish lands at the end
+  scriptSpeed, scriptThin   how fast and how often the original script may stroke
+  what counts as a gap: shortest gap in seconds, how still, and "anything slower than
+                   this video's usual pace"
+Settings are remembered per video and must never reset when the next video starts.
+Turning fill off must always work, immediately.
+
+Saved things. playlistsGet() / playlistsSet(all) read and write the saved pattern
+playlists (ordered steps of pattern + seconds). Journeys are kept in the browser's
+storage.
+
+Preview. The interface can compute the next 30 seconds of motion from the
+configuration and draw it as a line with the playhead, before anything is sent.
+
+Keys and controller. Every motion action can be bound to a keyboard key and to a
+gamepad button; sticks and triggers can drive live values (speed, the stroke window's
+two ends). The gamepad is read with the browser's Gamepad API by polling. Rules
+learnt the hard way, which the new interface must keep:
+- stick input is linear: value x rate x time. No response curves, no dead-zone
+  tricks, no "one axis at a time" rule.
+- a change from a held stick is sent 400 ms after the stick settles;
+- controller presses never pop up panels over the video.
+Show the binding on each control it belongs to.
+
+What the owner wants from manual mode: one place for it; presets on the pad (a speed
+and a stroke length per button); hold to take over from the script and release to
+hand back; a session that starts slow, builds and finishes, changing pattern every
+20 to 30 seconds without repeating; a single 0-100 "how close" control that slows and
+shortens the motion as it rises; pause buttons of 5 to 10 seconds; "stay on this
+pattern".
+
+
+8. PLAYLISTS, QUEUE, FAVOURITES, TAGS, HISTORY
+
+All of these refer to videos by their full path (there is no stable id), so an item
+whose file has moved shows as missing. Design a "missing" state for an item and never
+delete it automatically.
+
+  Queue            an ordered list of { name, videoPath, scriptPath, hasFunscript },
+                   kept in the browser's storage. Play now, move up, move down, remove,
+                   clear, save as a playlist.
+  Saved playlists  named lists of the same items, kept in the browser's storage. Load
+                   into the queue, show as a filter, combine several, edit in place.
+  Favourites       a set of video paths in the browser's storage.
+  My tags          named groups of videos kept in a file by the app:
+                     myTagsGet()                         -> { tagName: paths[] }
+                     myTagsSet({ name, paths, op })      op = 'add' | 'remove' | 'replace'
+                     myTagsCombine({ names, newName })   union of several tags
+                     myTagsTidy({ exclusive })           clean-up; the file is backed up first
+                     myTagsMeta()                        dates and counts per tag
+                   In today's interface "playlists" in the filter row are these tags.
+  Library tags     genres and themes per series, from the show information. Filter by
+                   any or all of the ticked tags.
+  History          what was played, newest first.
+Known weakness to design around: two different things are both called playlists
+(saved queues in the browser, and "my tags" in a file). Present them as one concept
+with one list; the owner should not need to know there are two stores.
+
+
+9. WHERE SETTINGS LIVE
+
+Files in the app's data folder, written only by the main process: the library cache,
+resume positions, show information, my tags, pattern playlists, thumbnails, the
+repackaged-video cache.
+Browser storage (localStorage), written by the interface, all keys start with
+"syncplayer_": active folders, sort and direction, view (grid or list), filters,
+favourites, queue, playlists, UI size, theme, the fill configuration (global and per
+video), the stroke window (global and per video, mode, style), key and controller
+bindings, roulette settings, minimum rating.
+Rules: keep every existing key and its meaning, so nothing the owner has set is lost.
+New settings get new keys. Reading storage can fail; always fall back to a default.
+
+
+10. THE CONTRACT: window.electronAPI
+
+Every method returns a Promise unless marked "send" (fire and forget) or "on..."
+(subscribe; the call returns a function that unsubscribes: call it on unmount).
+
+Library and files
+  listDrives(), chooseDrive(), scanDrive(root), onScanDriveProgress(cb)
+  selectDirectory(), scanDirectory(dir), scanDirectories(dirs, recursive?)
+  watchDirectory(dirs, recursive?), onDirectoryChanged(cb), takePendingFolders()
+  playbackFileExists(path), openFolder(dir)
+  scriptStatsBatch([{ videoPath, scriptPath }]), probeMediaBatch(videoPaths)
+  getThumbnail(path, second?), getThumbnailCached(path)
+  getResumeAll(), setResume(path, t, dur)
+Scripts
+  selectFunscript(), getFunscript(scriptPath), listScriptVersions(videoPath)
+Playback help
+  remuxVideo(path) -> { url } | { error }
+  getSubtitleText(path), getSubtitleCues(path)
+Device
+  connectHandy(key), stopHandy(), disconnectHandy()
+  uploadHandyScript(scriptPath, depth?, gap?)
+  playHandy(timeMs), pauseHandy(), syncHandyTime(timeMs), setHandyOffset(ms)
+  liveTameSet(values, state?), liveTameGet()
+  remoteSlide(min, max, mode?, style?)
+  remoteUploadVariants(variants), remotePlay(url, timeMs)
+  send setDevicePlayerState(state), send setDeviceMotion(motion)
+Patterns and saved sessions
+  listPatterns(), readPattern(path), readAllPatterns(), readPatternsByPath()
+  patternsBrief(), playlistsGet(), playlistsSet(all)
+Windows
+  openPopout(), closePopout(), send sendPopoutCommand(cmd), send notifyPopoutReady()
+  onPopoutCommand(cb), onPopoutReady(cb), onPopoutClosed(cb)
+  openLibraryPopout(), openDeckPopout(), openKeysPopout(), openChatPopout()
+  send libraryBridge(msg), onLibraryBridge(cb)
+  openAiPopout(), closeAiPopout(), send aiControlBridge(msg), onAiControlBridge(cb)
+Phone and second PC
+  getLanInfo(), send setLanPlayerState(state), onLanCommand(cb)
+  remoteVideoSend(...), remoteSidecarsFetch(...), getRemotePcHint(),
+  onRemoteVideoProgress(cb)
+Show information and tags
+  getSeriesInfo(path), getSeriesIndex(), getSeriesCatalog(), fixSeriesInfo(req)
+  refreshSeriesInfo(folders), setEpisodeSynopsis(path, text, sources)
+  myTagsGet(), myTagsSet(req), myTagsCombine(req), myTagsTidy(req), myTagsMeta()
+Assistants and model tools (optional panels; all local)
+  deepsyncStatus(), deepsyncStart(), deepsyncStop()
+  lmModels(base?), lmTest(base, model), webResearch(query)
+  aiTagsRun(job), aiTagsStatus(), aiTagsStop(), aiTagsUndo(), aiTagsChat(req),
+  onAiTagsProgress(cb), aiCollect(req), aiCoach(req), aiOrganiseSeries(req)
+  listGenPersonas(), getGenPersonaBio(id), getStudyCache(path), saveFastAiFolders(folders)
+
+Rules for using it
+- Never rename, wrap in a different shape, or add to this object.
+- Any call can fail or return nothing. Catch every one and show the failure next to
+  the control that caused it.
+- Long calls (scans, look-ups, loading a script, connecting) need a visible running
+  state and, where the app offers one, a cancel.
+- Check that a method exists before calling it: the phone page runs without Electron
+  and provides only part of the object.
+
+
+11. THE ASSISTANT PANELS
+
+Four optional panels (watch-along, chat, concierge, paced commentary) talk to two
+local services on this PC: a speech and commentary server (127.0.0.1:8899) and a
+local model server (127.0.0.1:1234). They can both be absent. The panels hold
+pick-lists (model, voice, persona, speech engine, interval), start and stop buttons,
+a message field, and several free-text fields that the owner has filled in.
+Rules: design the frame only. Every free-text field and every configured text is the
+owner's content: keep it exactly, never rewrite, shorten or pre-fill it, and in
+mock-ups draw it as a grey block labelled "existing text, unchanged". Personas are
+read-only here. Do not add filters, warnings or disclaimers.
+
+
+14. A STAND-IN FOR PREVIEWING WITHOUT THE APP
+
+To run your components in a browser, define this before your code loads. It returns
+neutral placeholder data only. Extend it as you need more of section 10.
+
+  const clip = (n, scripted) => ({
+    videoPath: 'D:/library/clip_' + n + '.mp4', name: 'clip_' + n + '.mp4',
+    scriptPath: scripted ? 'D:/library/clip_' + n + '.funscript' : undefined,
+    hasFunscript: scripted, durationMs: 180000 + n * 7000, strokes: scripted ? 400 + n : 0,
+    spm: scripted ? 120 + (n % 60) : 0, avgSpeed: scripted ? 180 + (n % 90) : 0,
+    sizeBytes: 300e6, createdAt: Date.now() - n * 864e5, addedAt: Date.now() - n * 36e5,
+    width: [1280, 1920, 3840][n % 3], height: [720, 1080, 2160][n % 3], contentKind: 'unknown',
+  });
+  const wait = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+  const script = { version: '1.0', actions: Array.from({ length: 400 }, (_, i) =>
+    ({ at: i * 450, pos: i % 2 ? 90 - (i % 7) * 5 : 10 + (i % 5) * 4 })) };
+  window.electronAPI = new Proxy({
+    scanDirectories: () => wait(300, Array.from({ length: 2000 }, (_, i) => clip(i + 1, i % 3 !== 0))),
+    listScriptVersions: (p) => wait(50, [{ label: 'default', path: p }, { label: 'v2', path: p }]),
+    getFunscript: () => wait(80, script),
+    getThumbnail: () => wait(120, null), getThumbnailCached: () => wait(10, null),
+    getResumeAll: () => wait(20, {}), setResume: () => wait(5),
+    connectHandy: (key) => wait(12000, key ? { connected: true, api: 'v3', fw: '4.0.0' }
+                                              : { connected: false, error: 'Connection key is required' }),
+    uploadHandyScript: () => wait(2000, { success: true }),
+    playHandy: () => wait(900), pauseHandy: () => wait(900), syncHandyTime: () => wait(900),
+    liveTameGet: () => wait(10, { pace: 100, speed: 100, length: 100, vibe: 0 }),
+    listPatterns: () => wait(60, [{ folder: 'Pattern set A', name: 'Pattern 1', path: 'p1' }]),
+    myTagsGet: () => wait(40, { 'Playlist 1': [] }), playlistsGet: () => wait(40, {}),
+  }, { get: (t, k) => t[k] || (String(k).startsWith('on') ? () => () => {} : () => wait(50, null)) });
+
+Note the 12-second connectHandy: it is deliberate. Design for it.
+
+
+APPENDIX B. EVERY EXISTING CONTROL (471). NONE MAY BE MISSING.
+How to use this list:
+- Each key below must exist in the new interface on a real element of the listed
+  kind: button -> <button>; checkbox -> <input type="checkbox">; number, range and
+  text -> <input> of that type; select -> <select> or the Select primitive, which must
+  expose the same value; textarea -> <textarea>. Put the key on the element as
+  data-ctl="the-key".
+- "One per ..." entries are repeated controls: every instance carries the same key.
+- A control that appears in two windows (the device panel docked and alone) carries
+  the same key in both.
+- The words after each key say what the control does today. They are not the label
+  to show; write a better, shorter one.
+- Anything you add that is not in this list gets data-new="1" and a line in
+  MAPPING.md.
+- MAPPING.md lists all 471 keys with the component each lives in. The self-check
+  also reports any key that never appears in the DOM across the bench's states.
+
+CONTROL CONTRACT LIST - SYNCPLAYER (471 controls). Format: key (kind) what it does today.
+
+[Top bar: theme, folders, drive search, Action Mix, device connection] (9)
+  top-01 (button) Theme: night mode or brighter
+  top-02 (button) Select folder containing videos and funscripts
+  top-03 (button) Refresh the active folders now and remove missing videos
+  top-04 (button) Search an entire drive for videos that already have a funscript
+  top-05 (button) Action Mix
+  top-06 (text) Device connection key
+  top-07 (button) Connect to the device
+  top-08 (button) Stop device movement but stay connected
+  top-09 (button) Stop and disconnect; forget the connection key
+
+[Library side: folders, search, chips, playlists, sort, filters, UI size] (40)
+  lib-01 (button) Saved folders
+  lib-02 (button) Phone remote
+  lib-03 (button) Action Mix
+  lib-04 (button) Shuffle all visible videos and play
+  lib-05 (button) Open queue
+  lib-06 (button) Remote control
+  lib-07 (button) Keys and controller cheat sheet
+  lib-08 (button) Make everything smaller (Ctrl -)
+  lib-09 (button) Make everything bigger (Ctrl +)
+  lib-10 (button) List view
+  lib-11 (button) Grid view with thumbnails
+  lib-12 (checkbox) Folder on/off tick (one per saved folder)
+  lib-13 (button) Open this folder in File Explorer
+  lib-14 (button) Forget this folder (files are not touched)
+  lib-15 (checkbox) Include sub-folders
+  lib-16 (button) Add folder
+  lib-17 (button) Select all
+  lib-18 (button) Just one
+  lib-19 (text) Search videos... (ep 3 · ep 3+ · ep 2-5)
+  lib-20 (button) Clear the search box
+  lib-21 (button) Filter chips: All, Scripted, Unscripted, Favs, Playlists and the rest (one per chip)
+  lib-22 (select) Which playlist to show
+  lib-23 (button) Add this playlist to a combined view
+  lib-24 (select) Order of the playlist list
+  lib-25 (button) Edit this playlist
+  lib-26 (checkbox) Show all playlists together
+  lib-27 (button) Take this playlist out of the combined view
+  lib-28 (button) Clear
+  lib-29 (button) Hide the sort and filter rows (more room for the list)
+  lib-30 (select) Sort by: name, stroke speed, length, size, date added and the rest
+  lib-31 (button) Sort direction: ascending or descending
+  lib-32 (checkbox) Series: shows together, episodes in order
+  lib-33 (select) Quality filter
+  lib-34 (select) Filter by orientation
+  lib-35 (checkbox) Hide videos whose script is empty
+  lib-36 (select) Minimum series rating (out of 10)
+  lib-37 (number) Only show videos at least this many minutes long
+  lib-38 (number) Only show videos at most this many minutes long
+  lib-39 (button) Clear length bounds
+  lib-40 (button) Clear filters
+
+[Tag filter] (13)
+  tag-01 (button) Filter the library by genre and theme (from the series lookup)
+  tag-02 (button) Remove this tag
+  tag-03 (button) Clear
+  tag-04 (button) Make one of my tags out of the ticked tags
+  tag-05 (text) Name for the combined tag
+  tag-06 (button) Save
+  tag-07 (button) Cancel
+  tag-08 (text) Find a tag
+  tag-09 (select) Order of the tag list
+  tag-10 (button) Match all ticked tags
+  tag-11 (button) Match any ticked tag
+  tag-12 (checkbox) Tag tick (one per tag)
+  tag-13 (button) Delete this tag of mine
+
+[Video tile (grid)] (3)
+  card-01 (button) Favourite on or off
+  card-02 (button) Add to or remove from this playlist
+  card-03 (button) Queue on or off
+
+[Video row (list)] (3)
+  row-01 (button) Add to or remove from this playlist
+  row-02 (button) Queue on or off
+  row-03 (button) Favourite on or off
+
+[History] (3)
+  hist-01 (button) History
+  hist-02 (text) Find
+  hist-03 (button) Play again (or: not in the folders shown now)
+
+[Queue and saved playlists] (10)
+  queue-01 (button) Close
+  queue-02 (button) Clear the queue
+  queue-03 (button) Move up
+  queue-04 (button) Move down
+  queue-05 (button) Play now
+  queue-06 (button) Remove
+  queue-07 (text) Name this playlist…
+  queue-08 (button) Save the queue as a playlist
+  queue-09 (button) Replace the queue with this playlist
+  queue-10 (button) Delete this playlist (videos are not touched)
+
+[Playlists helper] (22)
+  pl-01 (button) Playlists
+  pl-02 (text) Playlist name
+  pl-03 (button) Rename or save
+  pl-04 (text) What do you feel like?
+  pl-05 (button) Ask the helper for picks
+  pl-06 (button) Clear
+  pl-07 (button) Remove
+  pl-08 (text) Add a tag from the library
+  pl-09 (button) Add a tag to the request
+  pl-10 (button) Clear
+  pl-11 (checkbox) Check reviews online before picking
+  pl-12 (checkbox) Also use the tags ticked in the library's Tags filter
+  pl-13 (number) How many to pick (a number, or any)
+  pl-14 (checkbox) Skip videos already in other playlists
+  pl-15 (button) Fix the playlists you already have
+  pl-16 (button) See every playlist, tick some and delete them
+  pl-17 (select) Order of the playlist list
+  pl-18 (checkbox) Playlist tick (one per playlist)
+  pl-19 (button) Delete the ticked playlists
+  pl-20 (button) Confirm delete
+  pl-21 (button) Cancel
+  pl-22 (button) Tick all or untick all
+
+[Pick helper (recommendations)] (12)
+  pick-01 (button) Remove this tag
+  pick-02 (button) Clear
+  pick-03 (button) Queue all
+  pick-04 (select) How many series to recommend (applies to the next search)
+  pick-05 (checkbox) Only queue videos that have a script
+  pick-06 (button) Queue all recommended
+  pick-07 (button) Tag chip on a recommendation (one per tag)
+  pick-08 (button) Queue this series
+  pick-09 (button) Research online
+  pick-10 (text) What do you feel like watching?
+  pick-11 (button) Find
+  pick-12 (button) Search the web for this and have the model sum it up
+
+[Library pop-out window] (4)
+  libwin-01 (text) Search library…
+  libwin-02 (checkbox) Scripted only
+  libwin-03 (select) Sort by
+  libwin-04 (button) Sort direction
+
+[Player: banner, transport, script versions, roulette, mirror] (30)
+  play-01 (button) Picture fit: cycles the fit modes, shows the current one
+  play-02 (button) Roulette on or off (drawn only while Roulette is on)
+  play-03 (button) Make a voice track for this video
+  play-04 (select) Roulette pace
+  play-05 (select) How long to stay on each video
+  play-06 (number) Minimum seconds per video (min 3)
+  play-07 (number) Maximum seconds per video
+  play-08 (range) Depth and speed dial
+  play-09 (select) Plan a whole session up front
+  play-10 (button) Pre-pick every clip for the session
+  play-11 (button) Pop the library out into its own draggable window
+  play-12 (button) AI Concierge
+  play-13 (button) Pop the player out, or close the pop-out
+  play-14 (button) Fullscreen with heatmap overlay (F)
+  play-15 (select) Commentary volume (pick-list)
+  play-16 (range) Commentary volume (slider)
+  play-17 (select) Switch funscript version live
+  play-18 (button) Choose a .funscript file to link with this video
+  play-19 (button) Send the script to the device (shows: connect first, or script is on the device)
+  play-20 (button) Previous
+  play-21 (button) Play or pause the main PC's player (mirror view)
+  play-22 (button) Next
+  play-23 (button) Mirror on or off
+  play-24 (button) Both screens
+  play-25 (range) Seek desktop video
+  play-26 (button) Skip gap ( s)
+  play-27 (button) Start over
+  play-28 (button) Script version buttons (one per version, keys 1 to 9)
+  play-29 (button) Browse custom .funscript from file system
+  play-30 (button) Switch to expanded telemetry view
+
+[Pop-out player window] (1)
+  popwin-01 (button) Close pop-out
+
+[Device panel today (Gap Fill: Live, Source, Motion, More)] (87)
+  dev-01 (button) Tell the model where you are in the session
+  dev-02 (text) Where are you in the session?
+  dev-03 (button) Send
+  dev-04 (button) Clear
+  dev-05 (button) What plays: mode buttons (one per mode)
+  dev-06 (button) Every folder
+  dev-07 (button) Hand-made patterns in this folder (one chip per folder)
+  dev-08 (text) Shuffle focus: words from the pattern names, comma-separated
+  dev-09 (button) The eight built-in moods only
+  dev-10 (button) Your hand-made pattern files only
+  dev-11 (button) Moods and hand-made patterns take turns
+  dev-12 (button) Pattern chip: in the mix (click to remove) or click to add
+  dev-13 (button) Take turns in order
+  dev-14 (button) Random order
+  dev-15 (select) How long each pattern plays before it switches
+  dev-16 (button) Mood buttons (one per built-in mood)
+  dev-17 (button) Slower ( , )
+  dev-18 (button) Faster ( . )
+  dev-19 (button) Fill travel speed: lower
+  dev-20 (button) Fill travel speed: higher
+  dev-21 (button) Fill shake: less
+  dev-22 (button) Fill shake: more
+  dev-23 (select) How often the script is allowed to stroke
+  dev-24 (button) Back to the script as written
+  dev-25 (range) Live sliders: pace, speed, stroke length (one slider each, value shown)
+  dev-26 (range) Live vibration level: Auto, Off, 1 to 3
+  dev-27 (button) All three back to 100
+  dev-28 (button) Squash: the device's own slider scales every stroke
+  dev-29 (button) Keep the speed and tempo: strokes scaled into the window
+  dev-30 (button) Spare-time style: Pause at the turn, Soft landing, Mix it up
+  dev-31 (button) Stroke-window presets: Full, Tip, Mid, Base and the rest
+  dev-32 (range) Lowest point (0 = base)
+  dev-33 (range) Highest point (100 = tip)
+  dev-34 (range) Feel sliders (one per setting, applied on release)
+  dev-35 (select) Exact motion used in Motion mode
+  dev-36 (select) Load a saved pattern playlist
+  dev-37 (number) Seconds per step
+  dev-38 (button) Move up
+  dev-39 (button) Move down
+  dev-40 (button) Remove
+  dev-41 (select) Pattern pick-list: built-in motions, then hand-made files by folder
+  dev-42 (button) + Add
+  dev-43 (text) Preset name
+  dev-44 (button) Save
+  dev-45 (button) Delete this preset
+  dev-46 (select) Load a saved experience
+  dev-47 (text) Stage focus: a folder or words (empty means any)
+  dev-48 (select) Only patterns of this intensity (read from the names)
+  dev-49 (button) Play every matching pattern once (stage toggle)
+  dev-50 (number) Minutes for this stage
+  dev-51 (button) Move up
+  dev-52 (button) Move down
+  dev-53 (button) Remove
+  dev-54 (button) Add a stage
+  dev-55 (button) Add a stage from every folder
+  dev-56 (button) One stage per folder, every pattern once, in alphabetical order
+  dev-57 (text) Experience name
+  dev-58 (button) Save
+  dev-59 (button) Delete this experience
+  dev-60 (button) Order of the experience (one button per order)
+  dev-61 (button) Your hand-made pattern files
+  dev-62 (button) One built-in motion
+  dev-63 (button) Anything goes
+  dev-64 (button) Every folder, rotating the positions
+  dev-65 (button) Position chips: one per pattern folder, each showing its key
+  dev-66 (button) Session: everything, tease to finish
+  dev-67 (button) Session: fit the build-up to this video's length
+  dev-68 (button) Intensity chips: Tease, Slow, Mid, Fast, Finish, each showing its key
+  dev-69 (button) Open the keys and controller window
+  dev-70 (button) Mood buttons in the quick deck
+  dev-71 (button) Panel tabs: Live, Source, Motion, More
+  dev-72 (button) The funscript, as it is
+  dev-73 (button) The funscript, with your motion in its quiet parts
+  dev-74 (button) No funscript
+  dev-75 (select) Fill slow sections too: off, this video's own pace, or a fixed pace
+  dev-76 (checkbox) Fill anything slower than the video's own pace plus 10%
+  dev-77 (button) Jump to the next quiet part
+  dev-78 (select) Shortest gap worth filling (seconds)
+  dev-79 (select) How still counts as a gap: off, near-flat, normal, more, anything not moving much
+  dev-80 (button) Reset: turns off the fill, manual mode, the window, the vibration and the live sliders
+  dev-81 (button) Open these controls as their own window
+  dev-82 (checkbox) Show the quick deck on the video during gaps
+  dev-83 (button) Open the device panel (banner button; shows the stroke window when one is set)
+  dev-84 (button) Turn the fill on or off (G)
+  dev-85 (button) Jump to the next gap (T)
+  dev-86 (button) Pin the quick deck
+  dev-87 (button) Open the quick deck as its own window
+
+[Device panel pop-out window] (2)
+  deckwin-01 (button) Full panel
+  deckwin-02 (button) Quick deck
+
+[Keys and controller] (8)
+  keys-01 (button) Capture a keyboard key for this action (one per action)
+  keys-02 (button) Clear this action's keyboard key
+  keys-03 (button) Capture a controller button for this action (one per action)
+  keys-04 (button) Clear this action's controller button
+  keys-05 (select) What this stick or trigger controls (one pick-list per analog input)
+  keys-06 (select) What 'previous' means: the one before in the list, or the video played before
+  keys-07 (button) Reset keys and controller to the defaults
+  keys-08 (button) Open the keys and controller as their own window
+
+[Remote control: pattern chains without a video] (27)
+  rem-01 (button) Speed mode buttons: three named speeds (one per mode)
+  rem-02 (button) Close
+  rem-03 (select) Pattern folder
+  rem-04 (number) Speed for the next pattern (percent)
+  rem-05 (number) Length for the next pattern (seconds)
+  rem-06 (button) Add this pattern to the chain (one per pattern)
+  rem-07 (button) Move this step up
+  rem-08 (button) Move this step down
+  rem-09 (number) Speed of this step (percent)
+  rem-10 (number) Length of this step (seconds)
+  rem-11 (button) Duplicate
+  rem-12 (button) Remove
+  rem-13 (button) Load the chain onto the device
+  rem-14 (button) Play
+  rem-15 (button) Stop
+  rem-16 (checkbox) Loop the chain
+  rem-17 (range) Speed slider
+  rem-18 (range) Stroke window: highest point
+  rem-19 (range) Stroke window: lowest point
+  rem-20 (button) Stroke-window preset: Full
+  rem-21 (button) Stroke-window preset: Tip
+  rem-22 (button) Stroke-window preset: Mid
+  rem-23 (button) Stroke-window preset: Base
+  rem-24 (button) Stroke-window preset: Short
+  rem-25 (number) Speed factor for speed mode 1
+  rem-26 (number) Speed factor for speed mode 2
+  rem-27 (number) Speed factor for speed mode 3
+
+[Action Mix] (9)
+  mix-01 (button) Close drawer
+  mix-02 (button) Select all folders
+  mix-03 (button) Clear folder selection
+  mix-04 (button) Add folder from computer
+  mix-05 (checkbox) Folder tick (one per folder)
+  mix-06 (button) Action type toggles (one per action type)
+  mix-07 (button) Block length choice (one button per length)
+  mix-08 (button) Launch Action Mix starting at the highest-scoring climax block
+  mix-09 (button) Append calculated action blocks to the player queue
+
+[Info panel and the tagging toolbox] (45)
+  info-01 (button) Series synopsis, genres and themes
+  info-02 (button) Filter the library by this
+  info-03 (button) Look it up on the web (shows searching, or look it up again)
+  info-04 (button) Filter the library by this
+  info-05 (button) + more
+  info-06 (button) Look up the series in the linked folders on the metadata service
+  info-07 (button) AI tools
+  info-08 (text) Real name of the show (English or romaji)
+  info-09 (button) Fix: use the typed show name
+  info-10 (checkbox) Also the other videos in this folder
+  info-11 (button) Stop now; what is finished stays saved
+  info-12 (text) Local model server address
+  info-13 (select) The model that writes the tags
+  info-14 (button) Read the model list again
+  info-15 (button) One tiny question to both selected loaded models
+  info-16 (select) How many series are sent to the model at once
+  info-17 (select) A second loaded instance
+  info-18 (checkbox) Online only: info and tags from the metadata service, no model
+  info-19 (checkbox) Redo everything
+  info-20 (checkbox) Also redo name, bio and rating from fresh research
+  info-21 (button) Look-up: metadata service first, then the model for the rest
+  info-22 (button) Model look-up: this video
+  info-23 (button) Model look-up: this video's folder
+  info-24 (button) Model look-up: the ticked folders
+  info-25 (checkbox) Only series not retagged yet (new videos)
+  info-26 (button) Retag: this video's series
+  info-27 (button) Retag: this video's folder
+  info-28 (button) Retag: the ticked folders
+  info-29 (button) Put the previous tags back on every series the AI retagged
+  info-30 (button) Clean up tags: the model reviews the whole tag list
+  info-31 (button) Fill missing ratings from the metadata service
+  info-32 (button) Organise series: the model reads file names in the ticked folders
+  info-33 (checkbox) Re-check videos already filed
+  info-34 (select) One of the folders linked in the library
+  info-35 (button) Every series that has a video in the picked folder
+  info-36 (textarea) Tag suggestions given to the model (existing text, unchanged)
+  info-37 (text) Describe the playlist you want
+  info-38 (button) Make playlist tag
+  info-39 (button) Click to take this video out of the tag
+  info-40 (text) Add this video to one of my tags (new or existing)
+  info-41 (button) Add this video to the tag
+  info-42 (text) Standing hints for tagging (free text)
+  info-43 (button) Send
+  info-44 (button) Clear the chat (the standing instructions stay)
+  info-45 (textarea) Standing instructions added to every request (existing text, unchanged)
+
+[Second-PC link] (6)
+  link-01 (button) Second-PC link on or off
+  link-02 (text) Main PC address
+  link-03 (text) PIN
+  link-04 (button) Test and save
+  link-05 (button) Close
+  link-06 (button) Switch over now (reloads SyncPlayer)
+
+[Local speech/commentary server tab] (4)
+  ds-01 (button) Start the local server
+  ds-02 (button) Stop the server SyncPlayer started
+  ds-03 (button) Reload the local server's page
+  ds-04 (button) Dismiss for this session
+
+[AI: watch-along and commentary] (69)
+  ai-01 (button) Live AI orb: open the AI controls
+  ai-02 (button) Move AI controls to another monitor
+  ai-03 (button) Open all AI settings
+  ai-04 (button) Pop out AI to another monitor
+  ai-05 (button) Collapse to AI orb
+  ai-06 (button) Video grounded
+  ai-07 (button) Chat room
+  ai-08 (button) Start or stop listening
+  ai-09 (button) Settings
+  ai-10 (button) Clear chat
+  ai-11 (button) Scan the current video (dialogue and visuals)
+  ai-12 (button) Move these AI controls to another monitor
+  ai-13 (button) Return to compact live controls
+  ai-14 (button) Collapse to AI orb
+  ai-15 (button) Mode: video grounded
+  ai-16 (button) Mode: chat room
+  ai-17 (select) Persona pick-list
+  ai-18 (select) Voice pick-list
+  ai-19 (select) Bio source pick-list
+  ai-20 (button) Preview voice
+  ai-21 (button) This video
+  ai-22 (button) This video + my queue ( )
+  ai-23 (button) Another one (for later)
+  ai-24 (button) Read the subtitles and analyse the picture now
+  ai-25 (text) Ask for a suggestion
+  ai-26 (button) Suggest
+  ai-27 (button) Suggested pick (one per suggestion)
+  ai-28 (button) Cast chip (one per person in the cast)
+  ai-29 (select) On-screen role pick-list
+  ai-30 (text) Free-text field (existing text, unchanged)
+  ai-31 (button) Send
+  ai-32 (textarea) Direction text field (existing text, unchanged)
+  ai-33 (button) Make the voice track
+  ai-34 (textarea) Direction text field (existing text, unchanged)
+  ai-35 (textarea) Direction text field (existing text, unchanged)
+  ai-36 (textarea) Direction text field (existing text, unchanged)
+  ai-37 (button) Analyse current
+  ai-38 (button) Analyse current + queue ( )
+  ai-39 (button) Analyse whole folder ( )
+  ai-40 (button) Stop analysis
+  ai-41 (button) Add whole folder to playback queue ( )
+  ai-42 (select) Model pick-list
+  ai-43 (select) Voice pick-list
+  ai-44 (select) On-screen role pick-list
+  ai-45 (select) Persona pick-list
+  ai-46 (select) Persona pick-list
+  ai-47 (select) On-screen role pick-list
+  ai-48 (select) Style pick-list
+  ai-49 (select) Intensity pick-list
+  ai-50 (select) Speech engine pick-list
+  ai-51 (select) Interval pick-list (seconds)
+  ai-52 (button) Start or stop fluid conversation
+  ai-53 (textarea) Direction text field (existing text, unchanged)
+  ai-54 (textarea) Direction text field (existing text, unchanged)
+  ai-55 (textarea) Direction text field (existing text, unchanged)
+  ai-56 (checkbox) Lower the video's volume only while the voice speaks
+  ai-57 (button) Test selected voice
+  ai-58 (button) Start or stop automatic commentary
+  ai-59 (button) Generate the prerecorded voice track
+  ai-60 (button) Make the voice track for this video and every video in the queue
+  ai-61 (text) Main PC address
+  ai-62 (text) PIN
+  ai-63 (button) Test and save
+  ai-64 (button) Switch over now (reloads SyncPlayer)
+  ai-65 (button) Start or stop fluid conversation
+  ai-66 (text) Typed message
+  ai-67 (button) Send
+  ai-68 (button) Send a saved photo (asks for approval)
+  ai-69 (button) Clear conversation
+
+[AI pop-out window] (28)
+  aiwin-01 (button) Return AI controls to the main window
+  aiwin-02 (button) Video grounded
+  aiwin-03 (button) Chat room
+  aiwin-04 (button) Scan the current video (dialogue and visuals)
+  aiwin-05 (button) Start or stop always listening
+  aiwin-06 (text) Typed message
+  aiwin-07 (button) Send
+  aiwin-08 (button) Send a saved photo (asks for approval)
+  aiwin-09 (select) Model pick-list
+  aiwin-10 (select) Voice pick-list
+  aiwin-11 (select) Point-of-view pick-list
+  aiwin-12 (select) Persona pick-list
+  aiwin-13 (select) Style pick-list
+  aiwin-14 (select) Intensity pick-list
+  aiwin-15 (select) Speech engine pick-list
+  aiwin-16 (select) Interval pick-list (seconds)
+  aiwin-17 (textarea) Direction text field (existing text, unchanged)
+  aiwin-18 (textarea) Direction text field (existing text, unchanged)
+  aiwin-19 (textarea) Direction text field (existing text, unchanged)
+  aiwin-20 (checkbox) Lower the video's volume while speech plays
+  aiwin-21 (button) Test voice
+  aiwin-22 (button) Start or stop automatic remarks
+  aiwin-23 (button) Clear conversation
+  aiwin-24 (textarea) Direction text field (existing text, unchanged)
+  aiwin-25 (textarea) Direction text field (existing text, unchanged)
+  aiwin-26 (textarea) Direction text field (existing text, unchanged)
+  aiwin-27 (button) Stop folder analysis
+  aiwin-28 (button) Generate the current video's voice track
+
+[AI: chat] (11)
+  chat-01 (select) Model pick-list
+  chat-02 (button) Open as its own window (you can move it to another monitor)
+  chat-03 (button) Close
+  chat-04 (button) Queue these
+  chat-05 (button) Queue the session: first episode of each
+  chat-06 (button) Queue the session: every episode
+  chat-07 (button) Queue all of these ( videos)
+  chat-08 (text) Typed message
+  chat-09 (button) Web search for the next message, on or off
+  chat-10 (button) Send
+  chat-11 (checkbox) Scripted only
+
+[AI: concierge] (7)
+  con-01 (button) Open as a small window
+  con-02 (button) Mode: Help me pick, or Build a playlist
+  con-03 (select) Model pick-list
+  con-04 (text) Local model server address
+  con-05 (button) Save
+  con-06 (text) Ask for a suggestion
+  con-07 (button) Send
+
+[AI: paced commentary] (17)
+  edge-01 (select) Model pick-list
+  edge-02 (select) Voice pick-list
+  edge-03 (select) Role pick-list
+  edge-04 (select) Persona pick-list
+  edge-05 (select) Persona pick-list
+  edge-06 (select) Speech engine pick-list
+  edge-07 (select) Interval pick-list (seconds)
+  edge-08 (button) Rename this persona entry
+  edge-09 (text) New name field
+  edge-10 (button) Save
+  edge-11 (button) Cancel
+  edge-12 (textarea) Direction text field (existing text, unchanged)
+  edge-13 (text) Free-text field (existing text, unchanged)
+  edge-14 (checkbox) Lower the video's volume while speech plays
+  edge-15 (button) Prepare video
+  edge-16 (button) Prepare queue
+  edge-17 (button) Start or stop
+
+[Error fallback] (1)
+  err-01 (button) Try again
+
+END OF PROMPT

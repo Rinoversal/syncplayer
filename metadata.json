@@ -1,0 +1,6 @@
+{
+  "name": "SyncPlayer",
+  "description": "Local video library player and synchronised motion controller",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
